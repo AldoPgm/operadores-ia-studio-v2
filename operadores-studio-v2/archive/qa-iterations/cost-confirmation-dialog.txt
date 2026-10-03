@@ -1,0 +1,93 @@
+"use client"
+
+import { ExternalLink } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import type { GenerationEstimate } from "@/generation/platform"
+
+export function CostConfirmationDialog({
+  open,
+  onOpenChange,
+  model,
+  estimate,
+  error,
+  sourceUrl,
+  submitting,
+  onConfirm,
+  onRetry,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  model: string
+  estimate: GenerationEstimate | null
+  error: string | null
+  sourceUrl: string
+  submitting: boolean
+  onConfirm: () => void
+  onRetry: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={submitting ? () => {} : onOpenChange}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>Revisá el costo antes de generar</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <div className="space-y-4">
+            <div>
+              <p className="text-q-caption-sm-medium text-q-text-secondary">
+                {model}
+              </p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-q-text-primary">
+                {estimate ? `USD $${estimate.usd}` : error ? "No se pudo cotizar" : "Consultando costo…"}
+              </p>
+            </div>
+            <p className="text-q-body-sm-regular text-q-text-secondary">
+              {error
+                ? `${error} No se enviará la generación hasta obtener una estimación.`
+                : estimate
+                  ? "Este importe usa el modelo y los ajustes que elegiste. Confirmá para enviar la generación; el costo final lo determina Higgsfield."
+                  : "La estimación se consulta con tu API key. Todavía no se envió ninguna generación."}
+            </p>
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-q-body-sm-medium text-q-text-link underline underline-offset-2"
+            >
+              Ver precio oficial <ExternalLink className="size-3.5" />
+            </a>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            disabled={submitting}
+            onClick={() => onOpenChange(false)}
+          >
+            Volver
+          </Button>
+          {error ? (
+            <Button variant="secondary" disabled={submitting} onClick={onRetry}>
+              Reintentar
+            </Button>
+          ) : null}
+          <Button
+            disabled={submitting || estimate === null}
+            onClick={onConfirm}
+          >
+            {submitting ? "Enviando…" : "Confirmar y generar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

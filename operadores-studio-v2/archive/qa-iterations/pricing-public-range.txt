@@ -1,0 +1,114 @@
+/** Public list-price range from a model's Higgsfield page. This is not a quote. */
+export type PublishedRate = {
+  min: number
+  max: number
+  unit: string
+  sourceUrl: string
+}
+
+export type PricePreview = {
+  label: string
+  detail: string
+  hasTotal: boolean
+}
+
+export function modelPriceUrl(path: string): string {
+  return `https://open.higgsfield.ai/models/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`
+}
+
+/** Extract only the exact model slug's published range from Next's page data. */
+export function extractPublishedRate(
+  html: string,
+  path: string
+): PublishedRate | null {
+  const listStart = html.indexOf(String.raw`\"related_models\":[`)
+  if (listStart < 0) return null
+  const slugToken = String.raw`\"slug\":\"${path}\"`
+  const slugAt = html.indexOf(slugToken, listStart)
+  if (slugAt < 0) return null
+  const nextSlug = html.indexOf(String.raw`\"slug\":\"`, slugAt + slugToken.length)
+  const entry = html.slice(slugAt, nextSlug < 0 ? slugAt + 2500 : nextSlug)
+  const match = entry.match(
+    /\\"price_range\\":\{\\"min_amount\\":\\"([0-9.]+)\\",\\"max_amount\\":\\"([0-9.]+)\\",\\"currency\\":\\"USD\\",\\"unit\\":\\"([^"\\]+)\\"/
+  )
+  if (!match) return null
+  const min = Number(match[1])
+  const max = Number(match[2])
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min)
+    return null
+  return { min, max, unit: match[3]!, sourceUrl: modelPriceUrl(path) }
+}
+
+function quantity(body: Record<string, unknown>): number {
+  for (const field of ["batch_size", "num_images", "n"]) {
+    const value = body[field]
+    if (typeof value === "number" && Number.isInteger(value) && value > 0)
+      return value
+  }
+  return 1
+}
+
+function range(min: number, max: number): string {
+  const digits = max < 0.1 ? 4 : 2
+  const factor = 10 ** digits
+  const format = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: digits,
+  })
+  const lower = format.format(Math.floor(min * factor + 1e-8) / factor)
+  const upper = format.format(Math.ceil(max * factor - 1e-8) / factor)
+  return lower === upper ? lower : `${lower}–${upper}`
+}
+
+export function pricePreview(
+  rate: PublishedRate,
+  body: Record<string, unknown>
+): PricePreview {
+  const unit = rate.unit.toLowerCase()
+  if (["sec", "s", "second"].includes(unit)) {
+    const duration = body.duration
+    const hasVideoInput = Object.entries(body).some(
+      ([key, value]) =>
+        /video.*url|source.*url/.test(key) &&
+        (typeof value === "string" ||
+          (Array.isArray(value) && value.length > 0))
+    )
+    if (typeof duration === "number" && duration > 0 && !hasVideoInput)
+      return {
+        label: range(rate.min * duration, rate.max * duration),
+        detail: `${duration} s de video · rango publicado por Higgsfield`,
+        hasTotal: true,
+      }
+    return {
+      label: `${range(rate.min, rate.max)}/s`,
+      detail: hasVideoInput
+        ? "El video de entrada puede sumar segundos facturables."
+        : "La duración final depende del material de origen.",
+      hasTotal: false,
+    }
+  }
+  if (["image", "img"].includes(unit)) {
+    const count = quantity(body)
+    return {
+      label: range(rate.min * count, rate.max * count),
+      detail: `${count} ${count === 1 ? "imagen" : "imágenes"} · rango publicado por Higgsfield`,
+      hasTotal: true,
+    }
+  }
+  if (["request", "generation"].includes(unit))
+    return {
+      label: range(rate.min, rate.max),
+      detail: "Por generación · rango publicado por Higgsfield",
+      hasTotal: true,
+    }
+  return {
+    label: `${range(rate.min, rate.max)}/${rate.unit}`,
+    detail: "Higgsfield publica una tarifa por unidad; no se puede calcular el total.",
+    hasTotal: false,
+  }
+}

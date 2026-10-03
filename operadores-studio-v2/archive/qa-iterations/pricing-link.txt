@@ -1,0 +1,7 @@
+/** Public model page for checking Higgsfield's listed pricing details. */
+export function modelPriceUrl(path: string): string {
+  return `https://open.higgsfield.ai/models/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`
+}

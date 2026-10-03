@@ -1,0 +1,29 @@
+"use server"
+
+import { extractPublishedRate, modelPriceUrl } from "./pricing"
+import type { PublishedRate } from "./pricing"
+
+const MODEL_PATH = /^[a-z0-9][a-z0-9._/-]*$/i
+
+/** Public pricing only. The saved API key is never sent to the model page. */
+export async function getPublishedPriceRange(
+  path: string
+): Promise<PublishedRate | null> {
+  if (
+    typeof path !== "string" ||
+    path.length > 160 ||
+    !MODEL_PATH.test(path) ||
+    path.includes("..")
+  )
+    return null
+  try {
+    const response = await fetch(modelPriceUrl(path), {
+      next: { revalidate: 60 * 60 },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return null
+    return extractPublishedRate(await response.text(), path)
+  } catch {
+    return null
+  }
+}
