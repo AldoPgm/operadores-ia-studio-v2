@@ -77,7 +77,11 @@ export function createPlatformClient(options: PlatformClientOptions) {
     })
 
     const payload = await readJson(response)
-    if (!response.ok) throw new PlatformError(response.status, payload)
+    if (!response.ok)
+      throw new PlatformError(
+        response.status,
+        safeErrorBody(response.status, payload, options.apiKey)
+      )
     return payload
   }
 
@@ -93,10 +97,15 @@ export function createPlatformClient(options: PlatformClientOptions) {
     },
     async createUpload(contentType: unknown): Promise<UploadTicket> {
       const type = requireUploadContentType(contentType)
-      return parseUploadTicket(
+      const ticket = parseUploadTicket(
         await send("POST", UPLOAD_PATH, { content_type: type }),
         type
       )
+      // The ticket goes to the browser. Reject an upstream response that echoes
+      // the platform key in a URL or upload header.
+      if (JSON.stringify(ticket).includes(options.apiKey))
+        throw new PlatformError(502, { detail: "Invalid upload response" })
+      return ticket
     },
     async submit(
       model: string,
@@ -214,4 +223,20 @@ function messageFromBody(status: number, body: unknown): string {
   const detail = asRecord(body).detail
   if (typeof detail === "string" && detail) return detail
   return `Platform request failed (${status})`
+}
+
+function safeErrorBody(
+  status: number,
+  body: unknown,
+  apiKey: string
+): { detail: string } {
+  const detail = asRecord(body).detail
+  if (
+    typeof detail !== "string" ||
+    detail.length > 500 ||
+    detail.includes(apiKey) ||
+    /(?:api[_ -]?key|authorization|bearer|cookie)/i.test(detail)
+  )
+    return { detail: `Platform request failed (${status})` }
+  return { detail }
 }

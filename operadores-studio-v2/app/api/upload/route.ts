@@ -10,7 +10,7 @@ import { requireUploadContentType } from "@/generation/upload-contract"
 
 export async function POST(request: Request): Promise<NextResponse> {
   const origin = request.headers.get("origin")
-  if (origin && origin !== new URL(request.url).origin)
+  if (!origin || origin !== new URL(request.url).origin)
     return failure(403, "Cross-origin upload requests are not allowed.")
 
   let contentType: string

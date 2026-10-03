@@ -7,7 +7,7 @@ Para correrlo localmente, instalá Node.js 22.15 o posterior y pnpm, y luego eje
 ```bash
 cd operadores-studio-v2
 pnpm install
-cp .env.example .env.local
+pnpm setup
 pnpm dev
 ```
 

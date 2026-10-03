@@ -66,6 +66,16 @@ test("platform upload failures preserve the HTTP status", async () => {
   await assert.rejects(() => api.createUpload("image/png"), (error) => error.status === 401);
 });
 
+test("upstream errors and upload tickets cannot echo the platform key to the browser", async () => {
+  const api = client(async () => Response.json({ detail: "Authorization: Key test_api_key" }, { status: 403 }));
+  await assert.rejects(() => api.createUpload("image/png"), (error) =>
+    error.status === 403 && !error.message.includes("test_api_key") &&
+    !JSON.stringify(error.body).includes("test_api_key")
+  );
+  const echoed = { ...ticket, upload_headers: { ...ticket.upload_headers, "x-debug-key": "test_api_key" } };
+  await assert.rejects(() => client(async () => Response.json(echoed)).createUpload("image/png"), /Invalid upload response/);
+});
+
 test("malformed upload tickets are rejected", async () => {
   for (const invalid of [
     {},

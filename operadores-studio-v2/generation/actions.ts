@@ -6,6 +6,7 @@ import { getModel, parseSettings } from "./catalog"
 import type { GenerationPlane } from "./catalog/types"
 import {
   MissingCredentialsError,
+  LEGACY_PLATFORM_KEY_COOKIE,
   PLATFORM_KEY_COOKIE,
   PLATFORM_KEY_COOKIE_OPTIONS,
   decodeCredentials,
@@ -14,12 +15,14 @@ import {
 } from "./credentials"
 import { createPlatformClient, PlatformError } from "./platform"
 import type { GenerationEstimate, StatusResult } from "./platform"
+import { parseRequestIds } from "./request-ids"
 import { submitOnce } from "./submission-guard"
 import { toPlatform } from "./to-platform"
 
 export async function savePlatformCredentials(data: unknown) {
   const { apiKey } = parseCredentialInput(data)
   const jar = await cookies()
+  discardLegacyCredentials(jar)
   jar.set(
     PLATFORM_KEY_COOKIE,
     encodeCredentials(apiKey),
@@ -29,6 +32,7 @@ export async function savePlatformCredentials(data: unknown) {
 
 export async function clearPlatformCredentials() {
   const jar = await cookies()
+  discardLegacyCredentials(jar)
   jar.set(PLATFORM_KEY_COOKIE, "", {
     ...PLATFORM_KEY_COOKIE_OPTIONS,
     maxAge: 0,
@@ -95,13 +99,23 @@ export async function getGenerationStatuses(
 }
 
 export async function cancelGeneration(data: unknown) {
-  const [requestId] = parseRequestIds(data)
+  const [requestId] = parseRequestIds(data, true)
   await createPlatformClient(await readCredentials()).cancel(requestId!)
 }
 
 async function readStoredCredentials() {
   const jar = await cookies()
+  discardLegacyCredentials(jar)
   return decodeCredentials(jar.get(PLATFORM_KEY_COOKIE)?.value)
+}
+
+function discardLegacyCredentials(jar: Awaited<ReturnType<typeof cookies>>) {
+  if (!jar.get(LEGACY_PLATFORM_KEY_COOKIE)) return
+  jar.set(LEGACY_PLATFORM_KEY_COOKIE, "", {
+    ...PLATFORM_KEY_COOKIE_OPTIONS,
+    sameSite: "lax",
+    maxAge: 0,
+  })
 }
 
 async function readCredentials() {
@@ -110,23 +124,4 @@ async function readCredentials() {
   const baseUrl = process.env.HF_API_BASE_URL
   if (!baseUrl) throw new Error("Missing HF_API_BASE_URL")
   return { ...stored, baseUrl }
-}
-
-function parseRequestIds(data: unknown): string[] {
-  const payload = asObject(data, "Invalid status payload")
-  const requestIds = payload.requestIds
-  if (!Array.isArray(requestIds) || requestIds.length === 0) {
-    throw new Error("Invalid request ids")
-  }
-  return requestIds.map((requestId) => {
-    if (typeof requestId !== "string" || !requestId)
-      throw new Error("Invalid request id")
-    return requestId
-  })
-}
-
-function asObject(data: unknown, message: string): Record<string, unknown> {
-  if (data === null || typeof data !== "object" || Array.isArray(data))
-    throw new Error(message)
-  return data as Record<string, unknown>
 }
